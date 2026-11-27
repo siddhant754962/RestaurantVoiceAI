@@ -305,6 +305,14 @@ The following core workflows have been tested:
 - [x] Customer website deployment.
 - [x] Hindi and English voice interactions.
 
+
+
+## 🌐 Live Demo
+
+- **Customer Website:** https://restaurantvoiceai-customer.vercel.app/
+- **Admin Dashboard:** https://restaurantvoiceai-65jqltav5gs5m3rsfmttzg.streamlit.app/
+- **Backend API:** https://restaurantvoiceai.onrender.com/docs
+- **GitHub Repository:** https://github.com/siddhant754962/RestaurantVoiceAI
 ---
 
 ## 🔐 Security Considerations
@@ -346,6 +354,8 @@ Interested in Generative AI, Agentic AI, AI Engineering, and Full-Stack AI Appli
 - Portfolio: Add your portfolio URL
 
 ---
+
+
 
 ## ⭐ Support
 
