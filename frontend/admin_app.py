@@ -13,6 +13,8 @@ API_BASE_URL = os.getenv(
     "http://127.0.0.1:8000"
 ).rstrip("/")
 
+REQUEST_TIMEOUT = (15, 120)
+
 st.set_page_config(
     page_title="RestaurantVoiceAI Admin",
     page_icon="🍽️",
@@ -33,7 +35,7 @@ def get_reservations(auth):
     response = requests.get(
         f"{API_BASE_URL}/admin/reservations",
         auth=auth,
-        timeout=15,
+        timeout=REQUEST_TIMEOUT,
     )
     response.raise_for_status()
     return response.json()
@@ -43,10 +45,25 @@ def cancel_reservation(booking_id, auth):
     response = requests.delete(
         f"{API_BASE_URL}/admin/reservations/{booking_id}",
         auth=auth,
-        timeout=15,
+        timeout=REQUEST_TIMEOUT,
     )
     response.raise_for_status()
     return response.json()
+
+
+def show_api_error(exc):
+    if isinstance(exc, requests.exceptions.Timeout):
+        st.error(
+            "Backend response timed out. "
+            "Render server may be waking up. Please retry."
+        )
+    elif isinstance(exc, requests.exceptions.ConnectionError):
+        st.error(
+            "Cannot connect to backend. "
+            "Please check your Render service."
+        )
+    else:
+        st.error(f"Backend request failed: {exc}")
 
 
 # ---------------- LOGIN PAGE ----------------
@@ -61,6 +78,7 @@ if st.session_state.admin_auth is None:
     with st.form("admin_login"):
         username = st.text_input("Username")
         password = st.text_input("Password", type="password")
+
         login_clicked = st.form_submit_button(
             "Login",
             use_container_width=True,
@@ -72,29 +90,30 @@ if st.session_state.admin_auth is None:
         else:
             auth = (username, password)
 
-            try:
-                data = get_reservations(auth)
-                st.session_state.admin_auth = auth
-                st.session_state.reservations = data.get(
-                    "reservations", []
-                )
-                st.success("Login successful!")
-                st.rerun()
+            with st.spinner("Connecting to restaurant backend..."):
+                try:
+                    data = get_reservations(auth)
 
-            except requests.exceptions.HTTPError as exc:
-                if exc.response is not None and exc.response.status_code == 401:
-                    st.error("Invalid username or password.")
-                else:
-                    st.error(f"Backend error: {exc}")
+                    st.session_state.admin_auth = auth
+                    st.session_state.reservations = data.get(
+                        "reservations", []
+                    )
 
-            except requests.exceptions.ConnectionError:
-                st.error(
-                    "Cannot connect to backend. "
-                    "Please start your FastAPI server."
-                )
+                    st.success("Login successful!")
+                    st.rerun()
 
-            except requests.exceptions.RequestException as exc:
-                st.error(f"Request failed: {exc}")
+                except requests.exceptions.HTTPError as exc:
+                    if (
+                        exc.response is not None
+                        and exc.response.status_code == 401
+                    ):
+                        st.error("Invalid username or password.")
+                    else:
+                        show_api_error(exc)
+
+                except requests.exceptions.RequestException as exc:
+                    show_api_error(exc)
+
 
 # ---------------- DASHBOARD ----------------
 
@@ -113,23 +132,31 @@ else:
             st.rerun()
 
     if st.button("🔄 Refresh Reservations"):
-        try:
-            data = get_reservations(auth)
-            st.session_state.reservations = data.get(
-                "reservations", []
-            )
-            st.success("Reservations refreshed.")
-        except requests.exceptions.RequestException as exc:
-            st.error(f"Could not refresh reservations: {exc}")
+        with st.spinner("Loading reservations..."):
+            try:
+                data = get_reservations(auth)
+
+                st.session_state.reservations = data.get(
+                    "reservations", []
+                )
+
+                st.success("Reservations refreshed.")
+
+            except requests.exceptions.RequestException as exc:
+                show_api_error(exc)
 
     reservations = st.session_state.reservations
 
     total = len(reservations)
+
     confirmed = sum(
-        1 for r in reservations if r.get("status") == "confirmed"
+        1 for r in reservations
+        if r.get("status") == "confirmed"
     )
+
     cancelled = sum(
-        1 for r in reservations if r.get("status") == "cancelled"
+        1 for r in reservations
+        if r.get("status") == "cancelled"
     )
 
     c1, c2, c3 = st.columns(3)
@@ -144,6 +171,7 @@ else:
 
     if not reservations:
         st.info("No reservations found.")
+
     else:
         filter_status = st.selectbox(
             "Filter by status",
@@ -203,38 +231,43 @@ else:
 
                 with col2:
                     if reservation.get("status") == "confirmed":
+
                         if st.button(
                             "Cancel Booking",
                             key=f"cancel_{booking_id}",
                             type="secondary",
                         ):
-                            try:
-                                result = cancel_reservation(
-                                    booking_id,
-                                    auth,
-                                )
+                            with st.spinner("Cancelling booking..."):
+                                try:
+                                    result = cancel_reservation(
+                                        booking_id,
+                                        auth,
+                                    )
 
-                                if result.get("success"):
-                                    st.success(
-                                        f"Booking #{booking_id} cancelled."
-                                    )
-                                    data = get_reservations(auth)
-                                    st.session_state.reservations = (
-                                        data.get("reservations", [])
-                                    )
-                                    st.rerun()
-                                else:
-                                    st.error(
-                                        result.get(
-                                            "message",
-                                            "Cancellation failed.",
+                                    if result.get("success"):
+                                        st.success(
+                                            f"Booking #{booking_id} cancelled."
                                         )
-                                    )
 
-                            except requests.exceptions.RequestException as exc:
-                                st.error(
-                                    f"Cancellation failed: {exc}"
-                                )
+                                        data = get_reservations(auth)
+
+                                        st.session_state.reservations = (
+                                            data.get("reservations", [])
+                                        )
+
+                                        st.rerun()
+
+                                    else:
+                                        st.error(
+                                            result.get(
+                                                "message",
+                                                "Cancellation failed.",
+                                            )
+                                        )
+
+                                except requests.exceptions.RequestException as exc:
+                                    show_api_error(exc)
 
     st.divider()
+
     st.caption("RestaurantVoiceAI | Admin Panel")
