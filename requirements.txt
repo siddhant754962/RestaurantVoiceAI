@@ -18,3 +18,10 @@ python-dotenv
 python-dotenv
 streamlit
 requests
+psycopg2-binary
+
+fastapi
+uvicorn
+sqlalchemy
+psycopg2-binary
+python-dotenv
